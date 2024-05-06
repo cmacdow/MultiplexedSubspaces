@@ -1,0 +1,104 @@
+function [rsq,rsq_perfold] = SharedBetas_InternalValidation(data,reverseFlag)
+%Camden - timeless
+%Fits RRR model betas on subsets of trials per motif/area and tests
+%their generalization to withheld trials. E.g., x fold cross validation. 
+%To compute explained variance, the testing data is reconstrctued from a
+%model fit across all time points (e.g., a full model). So explained
+%variance is "ExplainABLE Variance" in the withheld data. 
+if nargin <2; reverseFlag=0; end
+ndim = 10;
+nxval = 5;
+rng('default')
+area_label = data(1).area_label;
+%loop through each area
+rsq = NaN(numel(area_label),size(data,2),ndim);
+rsq_perfold = NaN(numel(area_label),size(data,2),ndim);
+for cur_area = 1:numel(area_label) 
+    tic
+    fprintf('\n\t working on area %d of %d',cur_area,numel(area_label));
+    for cur_motif = 1:size(data,2)
+        %split trials in half
+        %get the activity of the target area
+        if reverseFlag ==1
+            x = data(cur_motif).area_val{ismember(1:numel(area_label),cur_area)==1};
+            y = cat(1,data(cur_motif).area_val{ismember(1:numel(area_label),cur_area)==0});            
+        else
+            x = cat(1,data(cur_motif).area_val{ismember(1:numel(area_label),cur_area)==0});
+            y = data(cur_motif).area_val{ismember(1:numel(area_label),cur_area)==1};
+        end
+        %normalize to baseline
+        x = normalizeToBaseline(x,[1:2],'mean');
+        y = normalizeToBaseline(y,[1:2],'mean');
+        %use post stimulus
+        x = x(:,3:end,:);
+        y = y(:,3:end,:);
+        %remove the psth
+        x = x-nanmean(x,3);
+        y = y-nanmean(y,3);
+        x = reshape(x,[size(x,1),size(x,2)*size(x,3)])';             
+        y = reshape(y,[size(y,1),size(y,2)*size(y,3)])';        
+        
+        %10 fold cross validation        
+        cvp = cvpartition(size(x,1),'kfold',nxval);
+        
+        %get the lambda (using full rec as done with initial fitting)
+        dMaxShrink = .5:.01:1;
+        lambda = GetRidgeLambda(dMaxShrink, x,'scale',false);        
+        [~,idx] = bestLambda(data(cur_motif).cvl_ridge{cur_area});
+        
+        %Cross validated Betas (training data)
+        B = cell(1,nxval); V = cell(1,nxval);
+        for i = 1:nxval
+            [~,B{i},V{i}] = ReducedRankRegress(y(cvp.training(i),:), x(cvp.training(i),:), ndim,'scale',false,'RIDGEINIT',lambda(idx));               
+        end
+        % Full betas
+        [~,BB,VV] = ReducedRankRegress(y, x, ndim,'scale',false,'RIDGEINIT',lambda(idx));  
+        
+        %get the indices of the testing data trials since randomly partitioned
+        fullidx = arrayfun(@(n) find(cvp.test(n)==1),1:nxval,'UniformOutput',0);
+        fullidx = cat(1,fullidx{:});
+        for cur_d = 1:ndim
+            %project the testing data along the trained betas (for each of
+            %the trained betas)
+            Ytemp = arrayfun(@(n) x(cvp.test(n),:)*B{n}(:,cur_d)*V{n}(:,cur_d)',1:nxval,'UniformOutput',0);
+            Yhat = NaN(size(y));
+            Yhat(fullidx,:) = cat(1,Ytemp{:});
+            
+            %Get the activity predicted by the full model
+            Y = x*BB(:,cur_d)*VV(:,cur_d)';
+            rsq(cur_area,cur_motif,cur_d) = 1-NormalizedSquaredError(Y,Yhat);
+
+            %You can do the same thing, but predict on each of the cross
+            %validations to similar results
+            temp = arrayfun(@(n) 1-NormalizedSquaredError(Y(cvp.test(n),:),x(cvp.test(n),:)*B{n}(:,cur_d)*V{n}(:,cur_d)'),1:nxval,'UniformOutput',0);
+            rsq_perfold(cur_area,cur_motif,cur_d) = nanmean([temp{:}]);
+            
+        end
+    end
+    toc
+end %area
+
+
+end %function 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
