@@ -1,4 +1,4 @@
-Associated Multiplexed Subspaces Route Neural Activity Across Brain-wide Networks. Code includes additional analyses used in related projects. Code is being updated with examples use case instructions. 
+Associated Multiplexed Subspaces Route Neural Activity Across Brain-wide Networks. Code includes additional analyses used in related projects. Code is being updated with additional examples. For example data (e.g., walk through of motif discovery and widefield calcium imaging analyses, see https://github.com/cmacdow/fpCNMF. 
 
 Also see related repositories. 
 https://github.com/cmacdow/EphysAnalysis
